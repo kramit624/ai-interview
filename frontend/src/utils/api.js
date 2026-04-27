@@ -1,7 +1,8 @@
 import axios from "axios";
 
+const base = import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL || 'http://localhost:5000/api/v1';
 const api = axios.create({
-  baseURL: import.meta.env.BASE_URL|| "http://localhost:5000/api/v1",
+  baseURL: base,
   withCredentials: true,
 });
 
@@ -19,49 +20,58 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// Response interceptor: on 401, attempt to refresh access token using refresh token
+// Response interceptor: on 401, attempt to refresh access token using refresh token or cookie
 api.interceptors.response.use(
   (res) => res,
   async (error) => {
     const originalRequest = error.config;
     if (!originalRequest) return Promise.reject(error);
+
     // avoid infinite loop
     if (error.response && error.response.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true;
       try {
-        const refreshToken = localStorage.getItem("refreshToken");
-        if (!refreshToken) return Promise.reject(error);
+        const storedRefresh = localStorage.getItem("refreshToken");
+        let resp = null;
 
-        // call refresh endpoint directly with axios to avoid interceptor recursion
-        const resp = await axios.post(
-          "http://localhost:5000/api/v1/auth/refresh-token",
-          { token: refreshToken },
-          { withCredentials: true },
-        );
+        if (storedRefresh) {
+          resp = await axios.post(`${base}/auth/refresh-token`, { token: storedRefresh }, { withCredentials: true });
+        } else {
+          // Cookie-based refresh: empty body but cookies will be sent because withCredentials:true
+          resp = await axios.post(`${base}/auth/refresh-token`, {}, { withCredentials: true });
+        }
 
-        const newAccess = resp?.data?.data?.accessToken;
+        const newAccess = resp?.data?.data?.accessToken || resp?.data?.access_token || resp?.data?.token;
         if (newAccess) {
           try {
             localStorage.setItem("accessToken", newAccess);
-          } catch {
-            // ignore storage write errors
+          } catch (e) {
+            console.debug("Failed to save access token", e);
           }
           api.defaults.headers.common["Authorization"] = `Bearer ${newAccess}`;
           originalRequest.headers = originalRequest.headers || {};
           originalRequest.headers["Authorization"] = `Bearer ${newAccess}`;
-          return api(originalRequest);
+        } else {
+          // Server likely set an HttpOnly cookie for accessToken; remove any stored access token so axios relies on cookie
+          try {
+            localStorage.removeItem("accessToken");
+          } catch (e) {
+            console.debug("Failed to remove access token", e);
+          }
         }
-      } catch {
-        // refresh failed — clear tokens and reject
+
+        return api(originalRequest);
+      } catch (err) {
         try {
           localStorage.removeItem("accessToken");
           localStorage.removeItem("refreshToken");
-        } catch {
+        } catch (e) {
           // ignore
         }
         return Promise.reject(error);
       }
     }
+
     return Promise.reject(error);
   },
 );

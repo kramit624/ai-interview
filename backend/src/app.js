@@ -12,7 +12,7 @@ const liveInterviewRoutes = require("./routes/liveInterview.routes");
 
 app.use(
   cors({
-    origin: "http://localhost:5173", // React app URL
+    origin: process.env.FRONTEND_ORIGIN || "http://localhost:5173", // React app URL
     credentials: true, // Allow cookies to be sent
   }),
 );
