@@ -174,31 +174,50 @@ const logout = async (req, res) => {
 
 const refreshToken = async (req, res) => {
   try {
-    const { token } = req.body;
+    // Accept token from request body or HttpOnly cookie
+    let token = req.body?.token || req.cookies?.refreshToken;
 
     if (!token) {
-      return res.status(400).json({
-        message: "Refresh token is required",
-      });
+      return res.status(400).json({ message: "Refresh token is required" });
     }
 
-    const user = await User.findOne({ refreshToken: token });
-    if (!user) {
-      return res.status(403).json({
-        message: "Invalid refresh token",
-      });
+    // Verify token signature and extract payload
+    let payload;
+    try {
+      payload = jwt.verify(token, process.env.REFRESH_TOKEN_SECRET);
+    } catch (err) {
+      return res.status(403).json({ message: "Invalid refresh token" });
     }
 
+    const user = await User.findById(payload.id);
+    if (!user || !user.refreshToken) {
+      return res.status(403).json({ message: "Invalid refresh token" });
+    }
+
+    // Compare provided token with hashed token stored in DB
+    const isMatch = await bcrypt.compare(token, user.refreshToken);
+    if (!isMatch) {
+      return res.status(403).json({ message: "Invalid refresh token" });
+    }
+
+    // Issue new access token and set it as HttpOnly cookie
     const accessToken = generateAccessToken(user);
-    return res.status(200).json({
-      message: "Token refreshed successfully",
-      data: { accessToken },
-    });
+
+    const frontendOrigin = process.env.FRONTEND_ORIGIN || 'http://localhost:5173';
+    const isLocalhost = frontendOrigin.includes('localhost');
+    const isHttps = frontendOrigin.startsWith('https');
+    const cookieOpts = {
+      httpOnly: true,
+      secure: isHttps || process.env.NODE_ENV === 'production',
+      sameSite: isLocalhost ? 'Lax' : 'None',
+    };
+
+    res.cookie('accessToken', accessToken, { ...cookieOpts, maxAge: 15 * 60 * 1000 });
+
+    return res.status(200).json({ message: 'Token refreshed successfully' });
   } catch (error) {
-    console.error("Error refreshing token:", error);
-    return res.status(500).json({
-      message: "Error refreshing token",
-    });
+    console.error('Error refreshing token:', error);
+    return res.status(500).json({ message: 'Error refreshing token' });
   }
 };
 
