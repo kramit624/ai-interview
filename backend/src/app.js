@@ -12,10 +12,13 @@ const liveInterviewRoutes = require("./routes/liveInterview.routes");
 
 app.use(
   cors({
-    origin: process.env.FRONTEND_ORIGIN || "http://localhost:5173", // React app URL
-    credentials: true, // Allow cookies to be sent
+    origin: process.env.FRONTEND_ORIGIN || "http://localhost:5173",
+    credentials: true,
+    exposedHeaders: ["set-cookie"], // add this
   }),
 );
+
+
 app.use(express.json());
 app.use(cookieParser());
 

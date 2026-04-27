@@ -20,6 +20,16 @@ const generateRefreshToken = (user) => {
   });
 };
 
+
+const getCookieOptions = () => {
+  const isProd = process.env.NODE_ENV === "production";
+  return {
+    httpOnly: true,
+    secure: isProd, // required for SameSite=None
+    sameSite: isProd ? "None" : "Lax", // None allows cross-origin, Lax for local dev
+  };
+};
+
 // ================= REGISTER =================
 const register = async (req, res) => {
   try {
@@ -117,17 +127,15 @@ const login = async (req, res) => {
 
     await user.save();
 
+    const cookieOpts = getCookieOptions();
+
     res.cookie("accessToken", accessToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "Strict",
+      ...cookieOpts,
       maxAge: 15 * 60 * 1000,
     });
 
     res.cookie("refreshToken", refreshToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "Strict",
+      ...cookieOpts,
       maxAge: 7 * 24 * 60 * 60 * 1000,
     });
 
@@ -155,17 +163,13 @@ const login = async (req, res) => {
 // ================= LOGOUT =================
 const logout = async (req, res) => {
   try {
-    res.clearCookie("accessToken");
-    res.clearCookie("refreshToken");
-
-    return res.status(200).json({
-      message: "Logout successful",
-    });
+    const cookieOpts = getCookieOptions();
+    res.clearCookie("accessToken", cookieOpts);
+    res.clearCookie("refreshToken", cookieOpts);
+    return res.status(200).json({ message: "Logout successful" });
   } catch (error) {
     console.error("Error logging out user:", error);
-    return res.status(500).json({
-      message: "Error logging out user",
-    });
+    return res.status(500).json({ message: "Error logging out user" });
   }
 };
 
