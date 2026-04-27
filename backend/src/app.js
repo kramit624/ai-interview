@@ -24,5 +24,8 @@ app.use('/api/v1', bookingRoutes);
 app.use('/api/v1', resumeRoutes);
 app.use("/api/v1/aiTest", aiTestRoutes);
 app.use('/api/v1/live_interview', liveInterviewRoutes);
+app.get('/', (req, res) => {
+  res.send('Welcome to the AI Interview Platform API');
+});
 
 module.exports = app;
